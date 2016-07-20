@@ -5,10 +5,12 @@ cache一致性保证了多个CPU之间看到的内存是一致的，即使每个
 
 由下面四种状态组成，表明的是单个cacheline的状态。这是一个十分复杂的状态机，这里并不展开介绍。
 
- * M modified 修改的
- * E exclusive 独占的
- * S shared 分享的
- * I invalid 无效的
+ * M modified 修改的 只有一个CPU可以达到这个状态 dirty
+ * E exclusive 独占的 只有一个CPU可以达到这个状态 clean
+ * S shared 分享的 多个CPU可以达到这个状态 clean
+ * I invalid 无效的 多个CPU可以达到这个状态
+
+上面的dirty和clean指的是内存和cacheline的内容是否一致。
 
 ##volatile
 他提供的功能仅仅是在编译期的，这个关键字可以保证：
@@ -86,21 +88,21 @@ b=0
 在CPU中，有两个重要结构：
 
 * 一个是store buffer，写入内存的指令在指令完成的时候值只是写入到store buffer的。
-* 一个是invalidate queue，它用于存放当前失效的cacheline编号。
+* 一个是invalid queue，它用于存放当前失效的cacheline编号。
 
 对于两个CPU一个写（CPU0）一个读（CPU1）的情形：
 
-CPU0写的过程中会首先会写到store buffer，在遇到release barrier之后，才会将store buffer中的数据写到cacheline里面他的状态变成M（modified）并且稍后会写到内存中，然后发一条消息给其他的CPU，告诉他们那些cacheline要失效并且放到他们的invalidate queue中。
+CPU0写的过程中会首先会写到store buffer，在遇到release barrier之后，才会将store buffer中的数据写到cacheline里面他的状态变成M（modified）并且稍后会写到内存中，然后发一条消息给其他的CPU，告诉他们那些cacheline要失效并且放到他们的invalid queue中。
 
-CPU1在遇到acquire barrier之后，先会将invalidate queue清空，并将自己的cache中指定的cacheline置为I，然后就开始读取变量对应的cacheline，发现是I（invalidate），所以去别的CPU的cache中查找，并且在CPU0的那里找到状态为M的cacheline中有需要的变量，读取之并且返回，完成读取过程。
+CPU1在遇到acquire barrier之后，先会将invalid queue清空，并将自己的cache中指定的cacheline置为I，然后就开始读取变量对应的cacheline，发现是I（invalid），所以去别的CPU的cache中查找，并且在CPU0的那里找到状态为M的cacheline中有需要的变量，读取之并且返回，完成读取过程。
 
 如果没有上面barrier的保证的话，就会出现CPU0写入后一直放在自己的store buffer中，而CPU1读取一直读自己cacheline上面的旧数据的情况。
 ##cas
-对于cas操作来说，本身是带有full barrier语义的。但是它是写者将自己的cacheline置为E而不是M。
+对于cas操作来说，本身是带有full barrier语义的。但是它是写者将自己的cacheline先置为E让自己独占并发消息让其他CPU变为I而自己写完之后变为M。
 ##lock free
-利用原子操作去避免锁的使用，可以保证不会出现死锁，让系统持续前进。
+利用原子操作去避免锁的使用，可以保证不会出现死锁，让系统持续前进。一般都是乐观锁的实现，先做操作，做完之后在check，如果check失败就重做。
 ##wait free
-可以在指定时间常数内完成任务。
+所有线程都可以在有限的时间内完成任务。
 ##futex
 在它出现之前可用的有spinlock和信号量，spinlock就是在用户态持续检查，而信号量则是每一次都需要进入内核。
 而futex是linux的新同步原语，先会在用户态用原子操作进行检查，如果发现不能获得锁，则进入内核并wait，在用户态检查和进内核wait的空隙会有变化，在真正wait之前还会继续检查一次是否真正需要wait，如果不需要则可以直接拿锁，否则则需要wait。
