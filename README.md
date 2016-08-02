@@ -82,7 +82,7 @@ b=0
 
 对于上面的lock()和unlock()，如果带有acquire barrier和release barrier则可以防止CPU指令的乱序执行。
 
-###3.保证cache一致性
+###3.保证cache一致性 (!!!修改，cache一致性并不靠mb保证，还是靠MESI协议保证，读一定能读到写刚写到的值!!!)
 对于acquire barrier和release barrier构成了一对happen before关系。有其中一个另外一个就需要配对出现。而他们的配对出现也保证了cache一致性的实现。
 
 在CPU中，有两个重要结构：
